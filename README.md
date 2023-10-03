@@ -1,2 +1,1 @@
-# openimis-be-ecrvs
-The openIMIS Backend eCRVS reference module 
+# openIMIS Backend ecrvs reference module
