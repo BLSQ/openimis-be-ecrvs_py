@@ -1,10 +1,11 @@
 import logging
 
 from django.db.models import Q
+from django.utils.translation import gettext as _
 
 from autoenroll.services import autoenroll_family
 from core.models import InteractiveUser
-from ecrvs.models import HeraLocationIDsMapping, HeraNotification, HeraInstance, HeraHFIDsMapping
+from ecrvs.models import HeraLocationIDsMapping, HeraNotification, HeraInstance, HeraHFIDsMapping, HeraSubscription
 from insuree.models import Family, Insuree, Profession, Gender
 from location.models import Location, HealthFacility, HealthFacilityLegalForm, UserDistrict
 
@@ -452,3 +453,38 @@ def process_hera_notification(notification: HeraNotification):
     return trigger_error(error_message)
 
 
+def create_hera_subscription(topic: str, user_id: int):
+    hera = HeraInstance()
+    data = hera.subscribe(topic)
+    subscription = HeraSubscription.objects.create(
+        uuid=data["uuid"],
+        topic=data["topic"],
+        json_ext=data,
+        created_by=user_id,
+    )
+    return subscription
+
+
+def delete_hera_subscription(subscription: HeraSubscription, user_id: int):
+    try:
+        hera = HeraInstance()
+        success = hera.unsubscribe(subscription)
+        if success:
+            subscription.cancel(user_id)
+            return []
+
+        return {
+            'title': subscription.uuid,
+            'list': [{
+                'message': _("hera_subscription.mutation.failed_to_unsubscribe") % {'uuid': subscription.uuid},
+                'detail': "couldn't unsubscribe from eCRVS"
+            }]
+        }
+    except Exception as exc:
+        return {
+            'title': subscription.uuid,
+            'list': [{
+                'message': _("hera_subscription.mutation.failed_to_unsubscribe") % {'uuid': subscription.uuid},
+                'detail': str(exc)
+            }]
+        }

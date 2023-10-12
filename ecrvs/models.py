@@ -1,6 +1,7 @@
 import datetime
 import os
 import logging
+import random
 from collections import OrderedDict
 from threading import Lock
 
@@ -9,7 +10,8 @@ from django.conf import settings
 from django.db import models
 from datetime import datetime as py_datetime
 
-from core.models import ExtendableModel
+import core.models
+from core.models import ExtendableModel, ObjectMutation
 from ecrvs import fake_hera_server
 from location.models import Location, HealthFacility
 
@@ -164,13 +166,26 @@ class HeraNotification(ExtendableModel):
 
 class HeraSubscription(ExtendableModel):
     uuid = models.UUIDField(db_column="UUID", primary_key=True, editable=False)
-    created_at = models.DateTimeField(db_column="CreatedAt", default=py_datetime.now)
-    active = models.BooleanField(db_column="IsActive", default=True)
     topic = models.CharField(db_column="Topic", max_length=255)
+    created_at = models.DateTimeField(db_column="CreatedAt", default=py_datetime.now)
+    created_by = models.IntegerField(db_column='CreatedBy')
+    active = models.BooleanField(db_column="IsActive", default=True)
+    deleted_at = models.DateTimeField(db_column="DeletedAt", null=True, blank=True)
+    deleted_by = models.IntegerField(db_column='DeletedBy', null=True, blank=True)
 
     class Meta:
         managed = True
         db_table = "tblHeraSubscription"
+
+    @property
+    def id(self):
+        return self.uuid
+
+    def cancel(self, user_id: int):
+        self.active = False
+        self.deleted_by = user_id
+        self.deleted_at = py_datetime.now()
+        self.save()
 
 
 class SingletonMeta(type):
@@ -249,6 +264,7 @@ class HeraInstance(metaclass=SingletonMeta):
     def _prepare_data_headers(self):
         if not self.hera_token or self.token_expiry_timestamp < datetime.datetime.now():
             self._get_token()
+
         headers = {
             "Authorization": f"Bearer {self.hera_token}"
         }
@@ -264,27 +280,25 @@ class HeraInstance(metaclass=SingletonMeta):
     def subscribe(self, topic: str):
         if topic not in HeraNotification.AVAILABLE_TOPICS:
             raise ValueError("Invalid topic - can't subscribe")
-        logger.info(f"Hera: subscribing to {topic}")
+        logger.info(f"Hera: trying to subscribe to {topic}")
         headers = self._prepare_data_headers()
         url = f"{self.subscriptions_url}?topic={topic}&address={self.webhook_address}&policy=3600%2C-1"
+        response = requests.post(url, headers=headers)
+        data = response.json()
+        # response = fake_hera_server.fake_hera_subscription()
+        # data = response
+        # logger.info(f"Hera: successfully subscribed to {topic}")
 
-        # response = requests.post(url, headers=headers)
-        # data = response.json()
-        response = fake_hera_server.fake_hera_subscription()
-        data = response
+        if response.ok:
+            logger.info(f"Hera: successfully subscribed to {topic}")
+        else:
+            logger.error(f"Hera: couldn't subscribe to {topic} - {data}")
 
-        subscription = HeraSubscription.objects.create(
-            uuid=data["uuid"],
-            topic=data["topic"],
-            json_ext=data,
-        )
-        logger.info(f"Hera: successfully subscribed to {topic}")
-
-        return subscription
+        return data
 
     def fetch_insuree_data_from_nin(self, nin):
         # check NIN format ?
-        logger.info(f"Hera: fetching insuree data for {nin}")
+        logger.info(f"Hera: trying to fetch insuree data for {nin}")
         headers = self._prepare_data_headers()
         fields_to_fetch = self._build_insuree_fields_to_fetch_query()
         url = f"{self.get_persons_url}/{nin}?{fields_to_fetch}"
@@ -292,10 +306,15 @@ class HeraInstance(metaclass=SingletonMeta):
         response = requests.get(url, headers=headers)
         data = response.json()
         ordered_data = OrderedDict(sorted(data.items()))
+
         # response = fake_hera_server.fake_hera_insuree()
         # data = response
 
         logger.info(f"Hera: successfully fetched insuree data for {nin}")
+        # if response.ok:
+        #     logger.info(f"Hera: successfully fetched insuree data for {nin}")
+        # else:
+        #     logger.error(f"Hera: couldn't fetch insuree data - {data}")
         return data
 
     def unsubscribe(self, subscription: HeraSubscription):
@@ -304,6 +323,18 @@ class HeraInstance(metaclass=SingletonMeta):
         url = f"{self.subscriptions_url}/{subscription.uuid}"
         response = requests.delete(url, headers=headers)
 
-        data = response.json()
-        logger.info(f"Hera: successfully unsubscribed from {subscription.uuid}")
-        return data
+        if response.ok:
+            logger.info(f"Hera: successfully unsubscribed from {subscription.uuid}")
+            return True
+        else:
+            logger.error(f"Hera: couldn't unsubscribe from {subscription.uuid}")
+            return False
+
+
+class HeraSubscriptionMutation(core.models.UUIDModel, ObjectMutation):
+    hera_subscription = models.ForeignKey(HeraSubscription, models.DO_NOTHING, related_name="mutations")
+    mutation = models.ForeignKey(core.models.MutationLog, models.DO_NOTHING, related_name="hera_subscriptions")
+
+    class Meta:
+        managed = True
+        db_table = "ecrvs_HeraSubscriptionMutation"

@@ -1,8 +1,8 @@
+import uuid
 
-NIN_1 = "287349473994"
 
-def fake_hera_insuree(nin):
-    insuree_287349473994 = {
+def fake_hera_insuree():
+    return {
         "firstName": "TEST1",
         "lastName": "TEST1",
         "dob": "2022-08-20",
@@ -32,11 +32,6 @@ def fake_hera_insuree(nin):
         "certificateNumber": "BC0000001676",
     }
 
-    insurees = {
-        NIN_1: insuree_287349473994,
-    }
-
-    return insurees[nin]
 
 def fake_hera_auth():
     token = """
@@ -62,8 +57,9 @@ def fake_hera_auth():
 
 
 def fake_hera_subscription():
+    random_uuid = str(uuid.uuid4())
     return {
-        "uuid": "9aa6d043-b2af-4ae8-a03c-be3ae8638b12",
+        "uuid": random_uuid,
         "topic": "LifeEventTopic",
         "protocol": None,
         "address": "https://testwcc.requestcatcher.com",
