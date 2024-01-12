@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view
 
 from ecrvs.models import HeraNotification
 from ecrvs.services import process_hera_notification
+from ecrvs.exception import HeraNotificationException
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +23,23 @@ def hera_webhook(request):
         json_ext=payload,
     )
     if status != HeraNotification.STATUS_INVALID:
-        success, message = process_hera_notification(notification)
-        if success:
-            return JsonResponse({"status": "ok"})
+        try:
+            process_hera_notification(notification)
+            notification.set_processed()
+            return JsonResponse({"status": "ok", "code": 200})
+        except HeraNotificationException as e:
+            notification.set_status(HeraNotification.STATUS_PROCESSED_ERROR)
+            logger.exception("Known error while processing Hera notification on the webhook")
+            return JsonResponse({"status": "error", "message": str(e), "data": payload, "code": 400})
+        except Exception as e:
+            notification.set_status(HeraNotification.STATUS_PROCESSED_ERROR)
+            logger.exception("Unknown error while processing Hera notification on the webhook")
+            return JsonResponse({"status": "error", "message": str(e), "data": payload, "code": 500})
 
-        return JsonResponse({"status": "error", "error_message": message, "data": payload})
-
+    logger.error(f"Hera: received invalid notification - unknown value for context, operation or topic")
     return JsonResponse({
         "status": "error",
-        "error_message": "invalid or unknown values for context, operation or topic",
-        "data": payload
+        "message": "invalid or unknown values for context, operation or topic",
+        "data": payload,
+        "code": 400,
     })

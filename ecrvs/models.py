@@ -1,8 +1,6 @@
 import datetime
 import os
 import logging
-import random
-from collections import OrderedDict
 from threading import Lock
 
 import requests
@@ -12,7 +10,7 @@ from datetime import datetime as py_datetime
 
 import core.models
 from core.models import ExtendableModel, ObjectMutation
-from ecrvs import fake_hera_server
+from ecrvs.exception import HeraNotificationException, HeraSubscriptionException, HeraSetupException
 from location.models import Location, HealthFacility
 
 logger = logging.getLogger(__name__)
@@ -223,16 +221,17 @@ class HeraInstance(metaclass=SingletonMeta):
     def __init__(self) -> None:
         base_hera_login_url = os.environ.get('HERA_LOGIN_URL', False)
         if not base_hera_login_url:
-            raise ValueError("The HERA_LOGIN_URL ENV variable is not set")
+            raise HeraSetupException("The HERA_LOGIN_URL ENV variable is not set")
         base_hera_data_url = os.environ.get('HERA_DATA_URL', False)
         if not base_hera_data_url:
-            raise ValueError("The HERA_DATA_URL ENV variable is not set")
+            raise HeraSetupException("The HERA_DATA_URL ENV variable is not set")
         hera_login_secret = os.environ.get('HERA_LOGIN_SECRET', False)
         if not hera_login_secret:
-            raise ValueError("The HERA_LOGIN_SECRET ENV variable is not set")
+            raise HeraSetupException("The HERA_LOGIN_SECRET ENV variable is not set")
         webhook_address = os.environ.get('HERA_WEBHOOK_ADDRESS', False)
         if not webhook_address:
-            raise ValueError("The HERA_WEBHOOK_ADDRESS ENV variable is not set")
+            raise HeraSetupException("The HERA_WEBHOOK_ADDRESS ENV variable is not set")
+        webhook_address = "https://testwcc3.requestcatcher.com/"
 
         self.post_login_url = f"{base_hera_login_url}/realms/Hera/protocol/openid-connect/token"
         self.subscriptions_url = f"{base_hera_data_url}/v1/subscriptions"
@@ -241,7 +240,7 @@ class HeraInstance(metaclass=SingletonMeta):
         self.webhook_address = webhook_address
         self.fetch_insuree_fields = settings.HERA_INSUREE_FIELDS_TO_FETCH
 
-    def _get_token(self):
+    def _get_token(self) -> None:
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
         }
@@ -253,15 +252,18 @@ class HeraInstance(metaclass=SingletonMeta):
         logger.info("Hera: fetching token")
 
         response = requests.post(self.post_login_url, headers=headers, data=data_urlencode)
+        if not response.ok:
+            raise HeraNotificationException(f"Hera: error with token fetching - {response.text}")
+
         data = response.json()
-        # response = fake_hera_server.fake_hera_auth()
-        # data = response
+        if "access_token" not in data:
+            raise HeraNotificationException(f"Hera: no token received - {data['error']} - {data['error_description']}")
 
         self.hera_token = data["access_token"]
         self.token_expiry_timestamp = datetime.datetime.now() + datetime.timedelta(seconds=data["expires_in"])
         logger.info("Hera: token successfully fetched")
 
-    def _prepare_data_headers(self):
+    def _prepare_data_headers(self) -> dict:
         if not self.hera_token or self.token_expiry_timestamp < datetime.datetime.now():
             self._get_token()
 
@@ -270,65 +272,54 @@ class HeraInstance(metaclass=SingletonMeta):
         }
         return headers
 
-    def _build_insuree_fields_to_fetch_query(self):
+    def _build_insuree_fields_to_fetch_query(self) -> str:
         query = ""
         for field in self.fetch_insuree_fields:
             query += f"attributeNames={field}&"
         query = query[:-1]
         return query
 
-    def subscribe(self, topic: str):
+    def subscribe(self, topic: str) -> dict:
         if topic not in HeraNotification.AVAILABLE_TOPICS:
             raise ValueError("Invalid topic - can't subscribe")
         logger.info(f"Hera: trying to subscribe to {topic}")
         headers = self._prepare_data_headers()
         url = f"{self.subscriptions_url}?topic={topic}&address={self.webhook_address}&policy=3600%2C-1"
         response = requests.post(url, headers=headers)
+
+        if not response.ok:
+            raise HeraSubscriptionException(f"Hera: couldn't subscribe to {topic} - {response.text}")
+
         data = response.json()
-        # response = fake_hera_server.fake_hera_subscription()
-        # data = response
-        # logger.info(f"Hera: successfully subscribed to {topic}")
-
-        if response.ok:
-            logger.info(f"Hera: successfully subscribed to {topic}")
-        else:
-            logger.error(f"Hera: couldn't subscribe to {topic} - {data}")
-
+        logger.info(f"Hera: successfully subscribed to {topic}")
         return data
 
-    def fetch_insuree_data_from_nin(self, nin):
+    def fetch_insuree_data_from_nin(self, nin) -> dict:
         # check NIN format ?
         logger.info(f"Hera: trying to fetch insuree data for {nin}")
         headers = self._prepare_data_headers()
         fields_to_fetch = self._build_insuree_fields_to_fetch_query()
         url = f"{self.get_persons_url}/{nin}?{fields_to_fetch}"
-
         response = requests.get(url, headers=headers)
+
+        if not response.ok:
+            raise HeraNotificationException(f"Hera: couldn't fetch insuree data (nin {nin}) - response: {response.text}")
+
         data = response.json()
-        ordered_data = OrderedDict(sorted(data.items()))
-
-        # response = fake_hera_server.fake_hera_insuree()
-        # data = response
-
         logger.info(f"Hera: successfully fetched insuree data for {nin}")
-        # if response.ok:
-        #     logger.info(f"Hera: successfully fetched insuree data for {nin}")
-        # else:
-        #     logger.error(f"Hera: couldn't fetch insuree data - {data}")
         return data
 
-    def unsubscribe(self, subscription: HeraSubscription):
+    def unsubscribe(self, subscription: HeraSubscription) -> bool:
         logger.info(f"Hera: unsubscribing from {subscription.topic} - {subscription.uuid}")
         headers = self._prepare_data_headers()
         url = f"{self.subscriptions_url}/{subscription.uuid}"
         response = requests.delete(url, headers=headers)
 
-        if response.ok:
-            logger.info(f"Hera: successfully unsubscribed from {subscription.uuid}")
-            return True
-        else:
-            logger.error(f"Hera: couldn't unsubscribe from {subscription.uuid}")
-            return False
+        if not response.ok:
+            raise HeraSubscriptionException(f"Hera: couldn't unsubscribe from {subscription.uuid} - {response.text}")
+
+        logger.info(f"Hera: successfully unsubscribed from {subscription.uuid}")
+        return True
 
 
 class HeraSubscriptionMutation(core.models.UUIDModel, ObjectMutation):

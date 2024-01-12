@@ -27,9 +27,10 @@ class CreateHeraSubscriptionMutation(OpenIMISMutation):
             if not user.has_perms(EcrvsConfig.gql_hera_subscription_create_perms):
                 raise PermissionDenied(_("unauthorized"))
 
+            # raise ValueError("NOPE")
+
             client_mutation_id = data.get("client_mutation_id")
             subscription = create_hera_subscription(data["topic"], user.id_for_audit)
-
             HeraSubscriptionMutation.object_mutated(user,
                                                     client_mutation_id=client_mutation_id,
                                                     hera_subscription=subscription)
@@ -61,14 +62,16 @@ class DeleteHeraSubscriptionMutation(OpenIMISMutation):
         for subscription_uuid in data["uuids"]:
             subscription = HeraSubscription.objects.filter(uuid=subscription_uuid, active=True).first()
             if subscription is None:
-                errors += {
+                errors.append({
                     'title': subscription_uuid,
                     'list': [{
                         'message': _("hera_subscription.validation.id_does_not_exist") % {'id': subscription_uuid}
                     }]
-                }
+                })
                 continue
-            errors += delete_hera_subscription(subscription, user.id_for_audit)
+            result = delete_hera_subscription(subscription, user.id_for_audit)
+            if result:
+                errors.append(result)
         if len(errors) == 1:
             errors = errors[0]['list']
         return errors
