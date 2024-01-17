@@ -231,7 +231,6 @@ class HeraInstance(metaclass=SingletonMeta):
         webhook_address = os.environ.get('HERA_WEBHOOK_ADDRESS', False)
         if not webhook_address:
             raise HeraSetupException("The HERA_WEBHOOK_ADDRESS ENV variable is not set")
-        webhook_address = "https://testwcc3.requestcatcher.com/"
 
         self.post_login_url = f"{base_hera_login_url}/realms/Hera/protocol/openid-connect/token"
         self.subscriptions_url = f"{base_hera_data_url}/v1/subscriptions"
