@@ -22,6 +22,12 @@ LOCATION_TYPE_DISTRICT = "D"
 LOCATION_TYPE_WARD = "W"
 LOCATION_TYPE_VILLAGE = "V"
 
+CONTEXT_TO_TYPE = {
+    CONTEXT_DISTRICT_START: LOCATION_TYPE_DISTRICT,
+    CONTEXT_WARD_START: LOCATION_TYPE_WARD,
+    CONTEXT_VILLAGE_START: LOCATION_TYPE_VILLAGE,
+}
+
 HF_TYPE_COMMUNITY_CLINIC = "Community Clinic"
 HF_TYPE_COMMUNITY_CLINIC_2 = "Commmunity Clinic"  # Yes, some entries have this spelling
 HF_TYPE_HOSPITAL = "Hospital"
@@ -302,6 +308,59 @@ def delete_location(mapping: HeraLocationIDsMapping):
     logger.info(f"Hera: location successfully deleted")
 
 
+def process_location_initial_load(data: dict, context: str, operation: str):
+    logger.info(f"Hera: received location notification")
+    location_type = CONTEXT_TO_TYPE[context]
+    hera_code = data["location"]["locationCode"]
+    location_mapping = get_hera_location_mapping_by_hera_code(hera_code, location_type=location_type)
+
+    if operation == HeraNotification.OPERATION_CREATE or operation == HeraNotification.OPERATION_UPDATE:
+        if not location_mapping:
+            logger.info(f"Hera: creating initial load location with operation={operation}")
+            create_location(data, location_type, hera_code)
+        else:
+            update_location(data, location_type, hera_code, location_mapping)
+    elif operation == HeraNotification.OPERATION_DELETE:
+        if location_mapping:
+            delete_location(location_mapping)
+            raise HeraNotificationException(f"can't delete location - it doesn't exist (Hera code={hera_code})")
+    else:
+        raise HeraNotificationException(f"unknown operation ({operation})")
+
+
+def process_hf_initial_load(data: dict, operation: str):
+    logger.info(f"Hera: received hf notification")
+    hera_hf_code = data["location"]["locationCode"]
+    hf_mapping = get_hera_hf_mapping_by_hera_code(hera_hf_code)
+
+    if operation == HeraNotification.OPERATION_CREATE or operation == HeraNotification.OPERATION_UPDATE:
+
+        # Checking if the HF type exists
+        hf_type = data["location"]["type"]
+        if hf_type not in AVAILABLE_HF_TYPES:
+            raise HeraNotificationException(f"unknown type - {hf_type} (Hera code={hera_hf_code})")
+
+        # Checking if the district exists
+        hera_district_code = data["location"]["location"]["location"]["location"]["locationCode"]
+        district_mapping = get_hera_location_mapping_by_hera_code(hera_district_code,
+                                                                  location_type=LOCATION_TYPE_DISTRICT)
+        if not district_mapping:
+            raise HeraNotificationException(f"unknown district (district Hera code={hera_district_code}, "
+                                            f"Hera hf code={hera_hf_code})")
+
+        if not hf_mapping:
+            logger.info(f"Hera: creating initial load hf with operation={operation}")
+            create_hf(data, district_mapping.openimis_location, hera_hf_code, hf_type)
+        else:
+            update_hf(data, hf_mapping.openimis_hf, district_mapping.openimis_location, hf_type)
+    elif operation == HeraNotification.OPERATION_DELETE:
+        if hf_mapping:
+            delete_hf(hf_mapping)
+            raise HeraNotificationException(f"can't delete hf - it doesn't exist (Hera code={hera_hf_code})")
+    else:
+        raise HeraNotificationException(f"unknown operation ({operation})")
+
+
 def process_location_event(data: dict, location_type: str, operation: str):
     hera_code = data["location"]["locationCode"]
     location_mapping = get_hera_location_mapping_by_hera_code(hera_code, location_type=location_type)
@@ -425,14 +484,21 @@ def process_location_event_notification(notification: HeraNotification):
     operation = notification.operation
     context = notification.context
 
-    if context.startswith(CONTEXT_DISTRICT_START):
-        process_location_event(notification.json_ext, LOCATION_TYPE_DISTRICT, operation)
-    elif context.startswith(CONTEXT_WARD_START):
-        process_location_event(notification.json_ext, LOCATION_TYPE_WARD, operation)
-    elif context.startswith(CONTEXT_VILLAGE_START):
-        process_location_event(notification.json_ext, LOCATION_TYPE_VILLAGE, operation)
+    # commented out for handling the initial load
+    # if context.startswith(CONTEXT_DISTRICT_START):
+    #     process_location_event(notification.json_ext, LOCATION_TYPE_DISTRICT, operation)
+    # elif context.startswith(CONTEXT_WARD_START):
+    #     process_location_event(notification.json_ext, LOCATION_TYPE_WARD, operation)
+    # elif context.startswith(CONTEXT_VILLAGE_START):
+    #     process_location_event(notification.json_ext, LOCATION_TYPE_VILLAGE, operation)
+    # elif context.startswith(CONTEXT_HF_START):
+    #     process_hf_event(notification.json_ext, operation)
+
+    if context.startswith(CONTEXT_DISTRICT_START) or context.startswith(CONTEXT_WARD_START) or context.startswith(CONTEXT_VILLAGE_START):
+        process_location_initial_load(notification.json_ext, context, operation)
     elif context.startswith(CONTEXT_HF_START):
-        process_hf_event(notification.json_ext, operation)
+        process_hf_initial_load(notification.json_ext, operation)
+
     else:
         raise HeraNotificationException(f"Hera: unknown context: {context} (notification id ={notification.id})")
 
