@@ -97,6 +97,7 @@ Rights required:
 * gql_hera_subscription_delete_perms: (default: `["124002"]`)
 * gql_hera_notification_search_perms: (default: `["125000"]`)
 
+A mutation creates a new `Hera Administrator` role, includes all these rights in this role and gives this role to the Admin user.
 
 ### Tests
 To be added. Only tested manually with Postman.
@@ -105,3 +106,9 @@ To be added. Only tested manually with Postman.
 As of January 2024, the Hera API is:
 - not completely stable (when they have a new version, the responses sometimes change, even if the documentation is the same and the requests are the same)
 - not consistent (the errors are sent in various ways - or sometimes nothing is returned at all -, depending on the endpoint. Various internal error codes are also returned, even though they look like HTTP status codes, but they are not)
+
+A `HeraNotification` status can have on of these 4 values:
+- `RECEIVED`: the initial status, which means it has not been processed yet. If somehow the server crashes before fully processing a notification, it will have this status. Otherwise, there shouldn't be any notifications with this status.
+- `SUCCESS`: the notification was successfully processed, there was no error on the Hera side, nor on the openIMIS side
+- `ERROR`: there was an error during the notification process, because of unexpected situation (like trying to delete nonexistent values), errors in Hera...
+- `INVALID`: the notification was rejected before processing, because the `topic`, `operation` or `context` of this notification is unknown and not currently processed (maybe there was a new topic in Hera, a new context...)
