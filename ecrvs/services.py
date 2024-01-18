@@ -22,12 +22,6 @@ LOCATION_TYPE_DISTRICT = "D"
 LOCATION_TYPE_WARD = "W"
 LOCATION_TYPE_VILLAGE = "V"
 
-CONTEXT_TO_TYPE = {
-    CONTEXT_DISTRICT_START: LOCATION_TYPE_DISTRICT,
-    CONTEXT_WARD_START: LOCATION_TYPE_WARD,
-    CONTEXT_VILLAGE_START: LOCATION_TYPE_VILLAGE,
-}
-
 HF_TYPE_COMMUNITY_CLINIC = "Community Clinic"
 HF_TYPE_COMMUNITY_CLINIC_2 = "Commmunity Clinic"  # Yes, some entries have this spelling
 HF_TYPE_HOSPITAL = "Hospital"
@@ -308,9 +302,20 @@ def delete_location(mapping: HeraLocationIDsMapping):
     logger.info(f"Hera: location successfully deleted")
 
 
+def convert_location_context_to_type(context: str):
+    if context.startswith(CONTEXT_DISTRICT_START):
+        return LOCATION_TYPE_DISTRICT
+    elif context.startswith(CONTEXT_WARD_START):
+        return LOCATION_TYPE_WARD
+    elif context.startswith(CONTEXT_VILLAGE_START):
+        return LOCATION_TYPE_VILLAGE
+    else:
+        raise HeraNotificationException(f"Hera: unknown context - {context}")
+
+
 def process_location_initial_load(data: dict, context: str, operation: str):
     logger.info(f"Hera: received location notification")
-    location_type = CONTEXT_TO_TYPE[context]
+    location_type = convert_location_context_to_type(context)
     hera_code = data["location"]["locationCode"]
     location_mapping = get_hera_location_mapping_by_hera_code(hera_code, location_type=location_type)
 
