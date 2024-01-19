@@ -324,7 +324,7 @@ def process_location_initial_load(data: dict, context: str, operation: str):
             logger.info(f"Hera: creating initial load location with operation={operation}")
             create_location(data, location_type, hera_code)
         else:
-            update_location(data, location_type, hera_code, location_mapping)
+            update_location(location_mapping.openimis_location, data, location_type, hera_code)
     elif operation == HeraNotification.OPERATION_DELETE:
         if location_mapping:
             delete_location(location_mapping)
