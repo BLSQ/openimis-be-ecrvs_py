@@ -91,6 +91,12 @@ def fetch_insuree_occupation_from_payload(hera_occupation: str):
     return Profession.objects.filter(profession=hera_occupation).first()
 
 
+def convert_str_date_to_python_date(date_str: str):
+    from core import datetime
+    python_datetime = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+    return python_datetime.date()
+
+
 def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
     # Here, we should theoretically check if the received NIN:
     # - has the right format
@@ -102,14 +108,14 @@ def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
 
     from core import datetime
     insuree.save_history()
-    insuree.other_names = new_data["firstName"],
-    insuree.last_name = new_data["lastName"],
-    insuree.phone = new_data["mobileNumber"],
-    insuree.dob = new_data["dob"],
-    insuree.json_ext = new_data,
-    insuree.profession = fetch_insuree_occupation_from_payload(new_data["occupation"]),
-    insuree.gender = GENDER_MAPPING.get(new_data["gender"], GENDER_MAPPING[UNKNOWN_GENDER]),
-    insuree.audit_user_id = DEFAULT_AUDIT_USER_ID,
+    insuree.other_names = new_data["firstName"]
+    insuree.last_name = new_data["lastName"]
+    insuree.phone = new_data["mobileNumber"]
+    insuree.dob = convert_str_date_to_python_date(new_data["dob"])
+    insuree.json_ext = new_data
+    insuree.profession = fetch_insuree_occupation_from_payload(new_data["occupation"])
+    insuree.gender = GENDER_MAPPING.get(new_data["gender"], GENDER_MAPPING[UNKNOWN_GENDER])
+    insuree.audit_user_id = DEFAULT_AUDIT_USER_ID
     insuree.validity_from = datetime.datetime.now()
     insuree.save()
 
@@ -146,7 +152,7 @@ def process_new_insuree(insuree_data: dict, nin: str):
         other_names=insuree_data["firstName"],
         last_name=insuree_data["lastName"],
         phone=insuree_data["mobileNumber"],
-        dob=insuree_data["dob"],
+        dob=convert_str_date_to_python_date(insuree_data["dob"]),
         json_ext=insuree_data,
         profession=fetch_insuree_occupation_from_payload(insuree_data["occupation"]),
         gender=GENDER_MAPPING.get(insuree_data["gender"], GENDER_MAPPING[UNKNOWN_GENDER]),
