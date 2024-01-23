@@ -128,7 +128,8 @@ def process_new_insuree(insuree_data: dict, nin: str):
     # - has the right length
     # But the data in Hera is poor (bad format, sometimes no NIN...),
     # so we shouldn't do that for the moment (January 2024)
-    logger.info("Hera: processing new insuree query")
+    logger.info(f"Hera: processing new insuree query - nin {nin}")
+    logger.info(f"Hera: insuree_data = {insuree_data}")
 
     # get village from payload
     village_hera_code = insuree_data["residentialVillage"] if insuree_data["residentialVillage"] else insuree_data["registrationVillage"]
@@ -148,6 +149,7 @@ def process_new_insuree(insuree_data: dict, nin: str):
     logger.info(f"Hera: creating the new insuree")
     # add email field to the insuree, once it's available on Hera
     new_insuree = Insuree.objects.create(
+        family=new_family,
         chf_id=nin,
         other_names=insuree_data["firstName"],
         last_name=insuree_data["lastName"],
