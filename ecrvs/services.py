@@ -337,6 +337,7 @@ def process_location_initial_load(data: dict, context: str, operation: str):
     elif operation == HeraNotification.OPERATION_DELETE:
         if location_mapping:
             delete_location(location_mapping)
+        else:
             raise HeraNotificationException(f"can't delete location - it doesn't exist (Hera code={hera_code})")
     else:
         raise HeraNotificationException(f"unknown operation ({operation})")
@@ -370,6 +371,7 @@ def process_hf_initial_load(data: dict, operation: str):
     elif operation == HeraNotification.OPERATION_DELETE:
         if hf_mapping:
             delete_hf(hf_mapping)
+        else:
             raise HeraNotificationException(f"can't delete hf - it doesn't exist (Hera code={hera_hf_code})")
     else:
         raise HeraNotificationException(f"unknown operation ({operation})")
