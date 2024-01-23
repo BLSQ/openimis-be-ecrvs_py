@@ -111,6 +111,7 @@ def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
     insuree.other_names = new_data["firstName"]
     insuree.last_name = new_data["lastName"]
     insuree.phone = new_data["mobileNumber"]
+    insuree.email = new_data["emailId"]
     insuree.dob = convert_str_date_to_python_date(new_data["dob"])
     insuree.json_ext = new_data
     insuree.profession = fetch_insuree_occupation_from_payload(new_data["occupation"])
@@ -147,13 +148,13 @@ def process_new_insuree(insuree_data: dict, nin: str):
     )
 
     logger.info(f"Hera: creating the new insuree")
-    # add email field to the insuree, once it's available on Hera
     new_insuree = Insuree.objects.create(
         family=new_family,
         chf_id=nin,
         other_names=insuree_data["firstName"],
         last_name=insuree_data["lastName"],
         phone=insuree_data["mobileNumber"],
+        email=insuree_data["emailId"],
         dob=convert_str_date_to_python_date(insuree_data["dob"]),
         json_ext=insuree_data,
         profession=fetch_insuree_occupation_from_payload(insuree_data["occupation"]),
