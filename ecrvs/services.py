@@ -113,7 +113,7 @@ def process_insuree_picture(insuree_data: dict, insuree: Insuree):
         folder=photo_root,
         filename=insuree_data["facialImageFileName"],
         validity_from=datetime.datetime.now(),
-        date=insuree_data["registrationDate"],
+        date=datetime.datetime.now(),  # we should use the registration date but it's not available ATM
         officer_id=-1,
         audit_user_id=-1,
     )
