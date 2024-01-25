@@ -1,4 +1,5 @@
 import logging
+import os
 
 from django.db.models import Q
 from django.utils.translation import gettext as _
@@ -7,7 +8,7 @@ from autoenroll.services import autoenroll_family
 from core.models import InteractiveUser
 from ecrvs.models import HeraLocationIDsMapping, HeraNotification, HeraInstance, HeraHFIDsMapping, HeraSubscription
 from ecrvs.exception import HeraNotificationException
-from insuree.models import Family, Insuree, Profession, Gender
+from insuree.models import Family, Insuree, Profession, Gender, InsureePhoto
 from location.models import Location, HealthFacility, HealthFacilityLegalForm, UserDistrict
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,29 @@ def convert_str_date_to_python_date(date_str: str):
     return python_datetime.date()
 
 
+def process_insuree_picture(insuree_data: dict, insuree: Insuree):
+    logger.info(f"Hera: creating picture for Insuree ID {insuree.id} - NIN {insuree.chf_id}")
+    if insuree.photo:
+        logger.info(f"Hera: this Insuree already has a picture. Archiving the previous one.")
+        insuree.photo.delete_history()
+
+    photo_root = os.environ.get("PHOTO_ROOT_PATH", "/data/photos")
+
+    from core import datetime
+    photo = InsureePhoto.objects.create(
+        insuree=insuree,
+        chf_id=insuree.chf_id,
+        folder=photo_root,
+        filename=insuree_data["facialImageFileName"],
+        validity_from=datetime.datetime.now(),
+        date=insuree_data["registrationDate"],
+        officer_id=-1,
+        audit_user_id=-1,
+    )
+    logger.info(f"Hera: picture created")
+    return photo
+
+
 def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
     # Here, we should theoretically check if the received NIN:
     # - has the right format
@@ -118,6 +142,8 @@ def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
     insuree.gender = GENDER_MAPPING.get(new_data["gender"], GENDER_MAPPING[UNKNOWN_GENDER])
     insuree.audit_user_id = DEFAULT_AUDIT_USER_ID
     insuree.validity_from = datetime.datetime.now()
+    if new_data["facialImageFileName"] and (not insuree.photo or insuree.photo.filename != new_data["facialImageFileName"]):
+        insuree.photo = process_insuree_picture(new_data, insuree)
     insuree.save()
 
     logger.info(f"Hera: insuree {insuree.id} successfully updated")
@@ -163,6 +189,11 @@ def process_new_insuree(insuree_data: dict, nin: str):
         head=True,
         card_issued=True,
     )
+
+    if insuree_data["facialImageFileName"]:
+        picture = process_insuree_picture(insuree_data, new_insuree)
+        new_insuree.photo = picture
+        new_insuree.save()
 
     # Now placing the correct insuree into the family
     new_family.head_insuree = new_insuree
