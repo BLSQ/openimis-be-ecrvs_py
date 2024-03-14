@@ -137,7 +137,11 @@ def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
     insuree.phone = new_data["mobileNumber"]
     insuree.email = new_data["emailId"]
     insuree.dob = convert_str_date_to_python_date(new_data["dob"])
-    insuree.json_ext = new_data
+    previous_json_data = insuree.json_ext if insuree.json_ext else {}
+    insuree.json_ext = {
+        **previous_json_data,
+        **new_data,
+    }
     insuree.profession = fetch_insuree_occupation_from_payload(new_data["occupation"])
     insuree.gender = GENDER_MAPPING.get(new_data["gender"], GENDER_MAPPING[UNKNOWN_GENDER])
     insuree.audit_user_id = DEFAULT_AUDIT_USER_ID
@@ -167,10 +171,15 @@ def process_new_insuree(insuree_data: dict, nin: str):
         raise HeraNotificationException(f"Hera: can't find village with Hera code {village_hera_code}")
 
     logger.info(f"Hera: creating new family")
+    if insuree_data["residentialProvince"]:
+        family_address = f"Residential address: {insuree_data['residentialHouseNumber']} {insuree_data['residentialAlley']}"
+    else:
+        family_address = "No known residential address"
     new_family = Family.objects.create(
         audit_user_id=DEFAULT_AUDIT_USER_ID,
         head_insuree_id=1,  # dummy
         location=village_mapping.openimis_location,
+        address=family_address,
     )
 
     logger.info(f"Hera: creating the new insuree")
@@ -269,6 +278,7 @@ def create_location(data: dict, location_type: str, hera_code: str):
         audit_user_id=DEFAULT_AUDIT_USER_ID,
         parent=parent_location,
         type=location_type,
+        json_ext=data,
     )
 
     logger.info(f"Hera: creating new mapping")
@@ -332,6 +342,11 @@ def update_location(location: Location, data: dict, location_type: str, hera_cod
     location.validity_from = datetime.datetime.now()
     location.audit_user_id = DEFAULT_AUDIT_USER_ID
     location.parent = parent_location
+    previous_json_data = location.json_ext if location.json_ext else {}
+    location.json_ext = {
+        **previous_json_data,
+        **data,
+    }
     location.save()
     logger.info(f"Hera: location successfully updated")
 
@@ -453,6 +468,7 @@ def create_hf(data: dict, district: Location, hera_code: str, hf_type: str):
         legal_form=HealthFacilityLegalForm.objects.filter(code="G").first(),
         location=district,
         care_type=HealthFacility.CARE_TYPE_BOTH,
+        json_ext=data,
     )
 
     logger.info(f"Hera: creating health facility mapping")
@@ -478,6 +494,11 @@ def update_hf(data: dict, hf: HealthFacility, new_district: Location, hf_type: s
     hf.level = HF_LEVELS_MAPPING[hf_type]
     hf.legal_form = HealthFacilityLegalForm.objects.filter(code="G").first()
     hf.validity_from = datetime.datetime.now()
+    previous_json_data = hf.json_ext if hf.json_ext else {}
+    hf.json_ext = {
+        **previous_json_data,
+        **data,
+    }
     hf.save()
 
     logger.info(f"Hera: health facility successfully updated")
