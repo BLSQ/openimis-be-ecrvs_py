@@ -163,7 +163,9 @@ def process_new_insuree(insuree_data: dict, nin: str):
     logger.info(f"Hera: insuree_data = {insuree_data}")
 
     # get village from payload
-    village_hera_code = insuree_data["residentialVillage"] if insuree_data["residentialVillage"] else insuree_data["registrationVillage"]
+    village_hera_code = insuree_data["registrationVillage"]
+    if "residentialVillage" in insuree_data and insuree_data["residentialVillage"]:
+        village_hera_code = insuree_data["residentialVillage"]
     village_mapping = get_hera_location_mapping_by_hera_code(village_hera_code, LOCATION_TYPE_VILLAGE)
     if not village_mapping:
         # instead of triggering an error, we could place the family in an "unknown village", based on the LGA?
