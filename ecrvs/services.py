@@ -173,7 +173,7 @@ def process_new_insuree(insuree_data: dict, nin: str):
         raise HeraNotificationException(f"Hera: can't find village with Hera code {village_hera_code}")
 
     logger.info(f"Hera: creating new family")
-    if insuree_data["residentialProvince"]:
+    if "residentialProvince" in insuree_data and insuree_data["residentialProvince"]:
         family_address = f"Residential address: {insuree_data['residentialHouseNumber']} {insuree_data['residentialAlley']}"
     else:
         family_address = "No known residential address"
