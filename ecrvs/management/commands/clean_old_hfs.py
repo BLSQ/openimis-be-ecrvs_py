@@ -281,6 +281,13 @@ class Command(BaseCommand):
     """
 
     def handle(self, *args, **options):
+        error_message = (
+            "This command was created in order to clean data on the GMB production instance after the eCRVS integration."
+            "It was a one shot and should not be used again.")
+        print(error_message)
+        logger.error(error_message)
+        return
+
         clean_users()
         clean_claims()
         clean_claim_admins()
