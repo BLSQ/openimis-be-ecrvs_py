@@ -297,6 +297,7 @@ class HeraInstance(metaclass=SingletonMeta):
         # check NIN format ?
         logger.info(f"Hera: trying to fetch insuree data for {nin}")
         headers = self._prepare_data_headers()
+        headers["life_event_type"] = "BIRTH"
         fields_to_fetch = self._build_insuree_fields_to_fetch_query()
         url = f"{self.get_persons_url}/{nin}?{fields_to_fetch}"
         response = requests.get(url, headers=headers)
