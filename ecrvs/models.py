@@ -215,6 +215,7 @@ class HeraInstance(metaclass=SingletonMeta):
     subscriptions_url = ""
     get_persons_url = ""
     hera_token = ""
+    client_id = ""
     fetch_insuree_fields = []
     token_expiry_timestamp = None
 
@@ -231,11 +232,15 @@ class HeraInstance(metaclass=SingletonMeta):
         webhook_address = os.environ.get('HERA_WEBHOOK_ADDRESS', False)
         if not webhook_address:
             raise HeraSetupException("The HERA_WEBHOOK_ADDRESS ENV variable is not set")
+        client_id = os.environ.get("HERA_CLIENT_ID", False)
+        if not client_id:
+            raise HeraSetupException("The HERA_CLIENT_ID ENV variable is not set")
 
         self.post_login_url = f"{base_hera_login_url}/realms/Hera/protocol/openid-connect/token"
         self.subscriptions_url = f"{base_hera_data_url}/v1/subscriptions"
         self.get_persons_url = f"{base_hera_data_url}/v1/persons"
         self.hera_login_secret = hera_login_secret
+        self.client_id = client_id
         self.webhook_address = webhook_address
         self.fetch_insuree_fields = settings.HERA_INSUREE_FIELDS_TO_FETCH
 
@@ -244,7 +249,7 @@ class HeraInstance(metaclass=SingletonMeta):
             "Content-Type": "application/x-www-form-urlencoded",
         }
         data_urlencode = {
-            "client_id": "hera-m2m",
+            "client_id": self.client_id,
             "client_secret": self.hera_login_secret,
             "grant_type": "client_credentials",
         }
