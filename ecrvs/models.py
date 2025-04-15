@@ -7,8 +7,7 @@ import requests
 from django.conf import settings
 from django.db import models
 from datetime import datetime as py_datetime
-
-from urllib3.exceptions import ReadTimeoutError
+from requests.exceptions import Timeout
 
 import core.models
 from core.models import ExtendableModel, ObjectMutation
@@ -317,7 +316,7 @@ class HeraInstance(metaclass=SingletonMeta):
             data = response.json()
             logger.info(f"Hera: successfully fetched insuree data for {nin}")
             return data
-        except ReadTimeoutError:
+        except Timeout:
             raise HeraNotificationException(f"Hera: couldn't fetch insuree data (nin {nin}) - timeout from server after {self.hera_fetch_data_timeout} seconds")
 
     def unsubscribe(self, subscription: HeraSubscription) -> bool:
