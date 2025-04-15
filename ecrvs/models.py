@@ -8,6 +8,8 @@ from django.conf import settings
 from django.db import models
 from datetime import datetime as py_datetime
 
+from urllib3.exceptions import ReadTimeoutError
+
 import core.models
 from core.models import ExtendableModel, ObjectMutation
 from ecrvs.exception import HeraNotificationException, HeraSubscriptionException, HeraSetupException
@@ -243,6 +245,7 @@ class HeraInstance(metaclass=SingletonMeta):
         self.client_id = client_id
         self.webhook_address = webhook_address
         self.fetch_insuree_fields = settings.HERA_INSUREE_FIELDS_TO_FETCH
+        self.hera_fetch_data_timeout = 30  # in seconds
 
     def _get_token(self) -> None:
         headers = {
@@ -305,14 +308,17 @@ class HeraInstance(metaclass=SingletonMeta):
         headers["life_event_type"] = "BIRTH"
         fields_to_fetch = self._build_insuree_fields_to_fetch_query()
         url = f"{self.get_persons_url}/{nin}?{fields_to_fetch}"
-        response = requests.get(url, headers=headers)
+        try:
+            response = requests.get(url, headers=headers, timeout=self.hera_fetch_data_timeout)
 
-        if not response.ok:
-            raise HeraNotificationException(f"Hera: couldn't fetch insuree data (nin {nin}) - response: {response.text}")
+            if not response.ok:
+                raise HeraNotificationException(f"Hera: couldn't fetch insuree data (nin {nin}) - response: {response.text}")
 
-        data = response.json()
-        logger.info(f"Hera: successfully fetched insuree data for {nin}")
-        return data
+            data = response.json()
+            logger.info(f"Hera: successfully fetched insuree data for {nin}")
+            return data
+        except ReadTimeoutError:
+            raise HeraNotificationException(f"Hera: couldn't fetch insuree data (nin {nin}) - timeout from server after {self.hera_fetch_data_timeout} seconds")
 
     def unsubscribe(self, subscription: HeraSubscription) -> bool:
         logger.info(f"Hera: unsubscribing from {subscription.topic} - {subscription.uuid}")
