@@ -1,6 +1,7 @@
 import logging
 import os
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils.translation import gettext as _
@@ -122,7 +123,7 @@ def process_insuree_picture(insuree_data: dict, insuree: Insuree):
     return photo
 
 
-def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
+def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str, raw_data: dict):
     # Here, we should theoretically check if the received NIN:
     # - has the right format
     # - has the right length
@@ -141,7 +142,7 @@ def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
     previous_json_data = insuree.json_ext if insuree.json_ext else {}
     insuree.json_ext = {
         **previous_json_data,
-        **new_data,
+        **raw_data,
     }
     insuree.profession = fetch_insuree_occupation_from_payload(new_data["occupation"])
     insuree.gender = GENDER_MAPPING.get(new_data["gender"], GENDER_MAPPING[UNKNOWN_GENDER])
@@ -154,7 +155,7 @@ def process_existing_insuree(insuree: Insuree, new_data: dict, nin: str):
     logger.info(f"Hera: insuree {insuree.id} successfully updated")
 
 
-def process_new_insuree(insuree_data: dict, nin: str):
+def process_new_insuree(insuree_data: dict, nin: str, raw_data: dict):
     # Here, we should theoretically check if the received NIN:
     # - has the right format
     # - has the right length
@@ -174,15 +175,11 @@ def process_new_insuree(insuree_data: dict, nin: str):
         raise HeraNotificationException(f"Hera: can't find village with Hera code {village_hera_code}")
 
     logger.info(f"Hera: creating new family")
-    if "residentialProvince" in insuree_data and insuree_data["residentialProvince"]:
-        family_address = f"Residential address: {insuree_data['residentialHouseNumber']} {insuree_data['residentialAlley']}"
-    else:
-        family_address = "No known residential address"
     new_family = Family.objects.create(
         audit_user_id=DEFAULT_AUDIT_USER_ID,
         head_insuree_id=1,  # dummy
         location=village_mapping.openimis_location,
-        address=family_address,
+        address="No known residential address",
     )
 
     logger.info(f"Hera: creating the new insuree")
@@ -194,7 +191,7 @@ def process_new_insuree(insuree_data: dict, nin: str):
         phone=insuree_data["mobileNumber"],
         email=insuree_data["emailId"],
         dob=convert_str_date_to_python_date(insuree_data["dob"]),
-        json_ext=insuree_data,
+        json_ext=raw_data,
         profession=fetch_insuree_occupation_from_payload(insuree_data["occupation"]),
         gender=GENDER_MAPPING.get(insuree_data["gender"], GENDER_MAPPING[UNKNOWN_GENDER]),
         audit_user_id=DEFAULT_AUDIT_USER_ID,
@@ -224,16 +221,17 @@ def process_life_event_notification(notification: HeraNotification):
     context = notification.context
 
     hera_instance = HeraInstance()
-    insuree_data = hera_instance.fetch_insuree_data_from_nin(nin)
+    raw_data = hera_instance.fetch_insuree_data_from_nin(nin)
 
     if context == HeraNotification.CONTEXT_BIRTH_CREATED:
         logger.info(f"Hera: starting to process LifeEvent notification")
 
+        insuree_data = clean_raw_data_for_null_values(raw_data)
         existing_insuree = Insuree.objects.filter(validity_to__isnull=True, chf_id=nin).first()
         if existing_insuree:
-            process_existing_insuree(existing_insuree, insuree_data, nin)
+            process_existing_insuree(existing_insuree, insuree_data, nin, raw_data)
         else:
-            process_new_insuree(insuree_data, nin)
+            process_new_insuree(insuree_data, nin, raw_data)
 
         logger.info(f"Hera: LifeEvent notification successfully processed")
     else:
@@ -618,3 +616,10 @@ def delete_hera_subscription(subscription: HeraSubscription, user_id: int):
                 'detail': str(exc)
             }]
         }
+
+
+def clean_raw_data_for_null_values(data):
+    cleaned_data = {}
+    for field in settings.HERA_INSUREE_FIELDS_TO_FETCH:
+        cleaned_data[field] = data.get(field, None)
+    return cleaned_data
