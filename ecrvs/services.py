@@ -619,6 +619,8 @@ def delete_hera_subscription(subscription: HeraSubscription, user_id: int):
 
 
 def clean_raw_data_for_null_values(data):
+    # Before the latest Hera update, null values were sent in the payload.
+    # That is no longer the case, so let's re add them if they are missing.
     cleaned_data = {}
     for field in settings.HERA_INSUREE_FIELDS_TO_FETCH:
         cleaned_data[field] = data.get(field, None)
