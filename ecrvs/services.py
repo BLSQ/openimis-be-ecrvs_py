@@ -1,6 +1,7 @@
 import logging
 import os
 
+from django.db import transaction
 from django.db.models import Q
 from django.utils.translation import gettext as _
 
@@ -216,6 +217,7 @@ def process_new_insuree(insuree_data: dict, nin: str):
     logger.info(f"Hera: insuree successfully created")
 
 
+@transaction.atomic
 def process_life_event_notification(notification: HeraNotification):
     logger.info(f"Hera: LifeEvent notification")
     nin = notification.json_ext["nin"]
